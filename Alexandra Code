@@ -1,1 +1,331 @@
+ovarian.dataset <- read.delim("ovarian.data", sep=",", header = FALSE)
+features <- c("perimeter", "area", "smoothness", "symmetry", "concavity", paste("protein", seq(1, 25), sep=""))
+names(ovarian.dataset) <- c("cell_id", "diagnosis", features) # paste0(features,"_mean"), paste0(features,"_se"), paste0(features,"_worst")
+head(ovarian.dataset)
 
+# Q1. Dimensionality Reduction
+
+# Q1.1. Perform PCA on the features of the dataset. How much of the variation in the data is associated with PC1?
+
+features_data <- ovarian.dataset[, features]
+scaled_features <- scale(features_data)
+pca_result <- prcomp(scaled_features)
+summary(pca_result)
+
+pc1_variance <- (pca_result$sdev[1]^2 / sum(pca_result$sdev^2)) * 100
+
+# 42.77% of variation is associated with PC1.
+
+# Q1.2. You want to represent 90% of the variance in the data by dimensionality reduction. How many PCs do you need to achieve this? In other word,what would be the dimensionality of the reduced feature space so that you preserve 90% of the variability in the data?
+
+# Calculate cumulative explained variance
+cumulative_variance <- cumsum((pca_result$sdev^2) / sum(pca_result$sdev^2)) * 100
+
+# Find the number of PCs needed to achieve 90% explained variance
+PCs_needed <- which(cumulative_variance >= 90)[1]
+
+# 9 PCs are needed to achieve 90% representation of the variance.
+
+# Q1.3. As you should know by now, PCA transforms the data into a new space. In a 2-D plot, can you plot the observations corresponding to the first two important PCs? Note, use two different colors to represent the two classes of cells.
+
+# Extract the scores for the first two PCs
+PC9 <- pca_result$x[,9]
+PC10 <- pca_result$x[,10]
+
+# Create a data frame for plotting
+plot_data <- data.frame(PC9 = PC9, PC10 = PC10, diagnosis = ovarian.dataset$diagnosis)
+
+# Plot the observations
+library(ggplot2)
+ggplot(plot_data, aes(x = PC9, y = PC10, color = diagnosis)) +
+  geom_point() +
+  labs(title = "PCA Plot of First Two PCs",
+       x = "Principal Component 1",
+       y = "Principal Component 2") +
+  scale_color_manual(values = c("blue", "red"))  # Assign colors for benign and malignant cells
+
+# Q1.4. Can you plot the "area" and "concavity" features associated with the cells?
+
+# Extract the 'area' and 'concavity' features
+area <- ovarian.dataset$area
+concavity <- ovarian.dataset$concavity
+
+# Create a data frame for plotting
+plot_data <- data.frame(area = area, concavity = concavity, diagnosis = ovarian.dataset$diagnosis)
+
+# Plot the features
+ggplot(plot_data, aes(x = area, y = concavity, color = diagnosis)) +
+  geom_point() +
+  labs(title = "Area vs. Concavity",
+       x = "Area",
+       y = "Concavity") +
+  scale_color_manual(values = c("blue", "red"))  # Assign colors for benign and malignant cells
+
+# Q1.5. What is the difference between the two plots? Which one gives you better separation between the classes and why?
+
+# The plot that shows the differences in observations between PC1 and PC2 gives better separation between the classes as opposed to the area vs. concavity plot. This suggests that the first two principal components capture a significant portion of the variation that is relevant for distinguishing between benign and malignant cells.
+
+# Q1.6. (bonus): Plot the distribution of the PCs. Hint: you can use boxplot on the transformed dataset. Hint 1: when doing PCA, make sure you set scale and center arguments to TRUE. Hint 2: try the summary() function on the PCA results. Hint 3: PCA transforms the data into new dimension.
+
+boxplot(pca_result$x, main = "Distribution of PCs", scale = TRUE, center = TRUE)
+
+# Q2. Clustering
+
+# Q2.1. Apply kmeans clustering on the data and identify two clusters within your dataset. What is the concordance between the clusters that you have identified and the true labels of the cells (Benign vs Malignant). Hint: From clustering, you get the cluster membership of each cell. Note, you need to identify two clusters. From there, you can explore the relationship between the clusters and the true labels. You can then report accuracy, precision and recall of the methods. Hint: Use ifelse(cluster == 1, "M", "B") to convert the clusters to diagnosis labels. Remember, there is a 50-50 chance that cluster 1 corresponds to the benign label. Hint: Don't forget to scale the data beforehand.
+
+# Perform kmeans clustering
+k <- 2  # Number of clusters
+set.seed(123)  # For reproducibility
+kmeans_result <- kmeans(scaled_features, centers = k)
+
+# Convert cluster labels to diagnosis labels
+predicted_labels <- ifelse(kmeans_result$cluster == 1, "M", "B")
+
+# Evaluate concordance with true labels
+true_labels <- ovarian.dataset$diagnosis
+concordance <- sum(predicted_labels == true_labels) / length(true_labels)
+
+# Calculate accuracy, precision, and recall
+accuracy <- sum(predicted_labels == true_labels) / length(true_labels)
+precision <- sum(predicted_labels == "M" & true_labels == "M") / sum(predicted_labels == "M")
+recall <- sum(predicted_labels == "M" & true_labels == "M") / sum(true_labels == "M")
+
+# Print results
+cat("Concordance between clusters and true labels:", concordance, "\n")
+cat("Accuracy:", accuracy, "\n")
+cat("Precision for Malignant:", precision, "\n")
+cat("Recall for Malignant:", recall, "\n")
+
+# Q2.2. Repeat the kmeans analysis 10 times and report the mean accuracy across the 10 runs. Why are the results different in each run?
+
+# Initialize an empty vector to store accuracies
+accuracies <- numeric(10)
+
+# Repeat the analysis 10 times
+for (i in 1:10) {
+  # Perform k-means clustering
+  set.seed(i)  # Set seed for reproducibility
+  kmeans_result <- kmeans(scaled_features, centers = 2, nstart = 1)
+  
+  # Convert cluster labels to "M" and "B"
+  predicted_labels <- ifelse(kmeans_result$cluster == 1, "M", "B")
+  
+  # Calculate accuracy
+  accuracy <- sum(predicted_labels == true_labels) / length(true_labels)
+  
+  # Store the accuracy
+  accuracies[i] <- accuracy
+}
+
+# Calculate mean accuracy
+mean_accuracy <- mean(accuracies)
+
+# Print results
+cat("Mean accuracy:", mean_accuracy, "\n")
+
+# The results are different in each run because the cluster centroids are randomly initialized at the beginning of each run, the different initial placements allowing the algorithm to converge to different solutions.
+
+# Q2.3. Repeat the same analysis but with the top 5 PCs. Hint: From the PCA results, take the top 5 PCs and repeat the analysis. Do not scale the PCA data, however, as PCA has already taken care of this.
+
+# Take the top 5 PCs
+top_5_PCs <- pca_result$x[, 1:5]
+
+# Perform k-means clustering on the top 5 PCs
+kmeans_result <- kmeans(top_5_PCs, centers = 2, nstart = 10)
+
+# Convert cluster labels to "M" and "B"
+predicted_labels <- ifelse(kmeans_result$cluster == 1, "M", "B")
+
+# Evaluate concordance with true labels
+true_labels <- ovarian.dataset$diagnosis
+concordance <- sum(predicted_labels == true_labels) / length(true_labels)
+
+# Calculate accuracy, precision, and recall
+accuracy <- sum(predicted_labels == true_labels) / length(true_labels)
+precision <- sum(predicted_labels == "M" & true_labels == "M") / sum(predicted_labels == "M")
+recall <- sum(predicted_labels == "M" & true_labels == "M") / sum(true_labels == "M")
+
+# Print results
+cat("Concordance between clusters and true labels:", concordance, "\n")
+cat("Accuracy:", accuracy, "\n")
+cat("Precision for Malignant:", precision, "\n")
+cat("Recall for Malignant:", recall, "\n")
+
+# Q2.4. Compare the results between Q2.2. and Q2.3. Hint: Do the results get better or worse? Why?
+
+# The results in Q2.3. are better considering the results show a significant improvement in concordance, accuracy, precision and recall. This may be because the reduced set of principal components covers sufficient information and reduces noise or irrelevant information.
+
+# Q3. Classification
+
+ovarian.dataset.train <- ovarian.dataset[sample(nrow(ovarian.dataset))[1:(nrow(ovarian.dataset)/2)],]
+ovarian.dataset.test <- ovarian.dataset[sample(nrow(ovarian.dataset))[(nrow(ovarian.dataset)/2):(nrow(ovarian.dataset))],]
+
+# Q3.1. Design a logistic regression classifier to identify (differentiate) benign and malignant cells. Report the performance of the classification technique on the training and test sets. You can report accuracy, precision and recall. Compare the performance of the classifier on the training and test set and provide a reason as to why one is better than the other. Hint: Use the "binomial" option while training and use predict(..., type="response") to obtain the result as a probability. Then use P=0.5 as the threshold to separate probabilities into "M" and "B". Hint: Do not worry if the model does not converge.
+
+# Design a logistic regression classifier
+ovarian.dataset.train$diagnosis <- ifelse(ovarian.dataset.train$diagnosis == "M", 1, 0)
+ovarian.dataset.test$diagnosis <- ifelse(ovarian.dataset.test$diagnosis == "M", 1, 0)
+logistic_model <- glm(diagnosis ~ ., data = ovarian.dataset.train, family = binomial)
+
+# Predict probabilities on training set
+train_probabilities <- predict(logistic_model, newdata = ovarian.dataset.train, type = "response")
+train_preds <- ifelse(train_probabilities >= 0.5, 1, 0)
+
+# Predict probabilities on test set
+test_probabilities <- predict(logistic_model, newdata = ovarian.dataset.test, type = "response")
+test_preds <- ifelse(test_probabilities >= 0.5, 1, 0)
+
+# Calculate accuracy, precision, and recall on training set
+train_accuracy <- sum(train_preds == ovarian.dataset.train$diagnosis) / nrow(ovarian.dataset.train)
+train_precision <- sum(train_preds[ovarian.dataset.train$diagnosis == 1] == 1) / sum(train_preds == 1)
+train_recall <- sum(train_preds[ovarian.dataset.train$diagnosis == 1] == 1) / sum(ovarian.dataset.train$diagnosis == 1)
+
+# Calculate accuracy, precision, and recall on test set
+test_accuracy <- sum(test_preds == ovarian.dataset.test$diagnosis) / nrow(ovarian.dataset.test)
+test_precision <- sum(test_preds[ovarian.dataset.test$diagnosis == 1] == 1) / sum(test_preds == 1)
+test_recall <- sum(test_preds[ovarian.dataset.test$diagnosis == 1] == 1) / sum(ovarian.dataset.test$diagnosis == 1)
+
+# Display results
+cat("Training Set Performance:\n")
+cat("Accuracy:", train_accuracy, "\n")
+cat("Precision for Malignant:", train_precision, "\n")
+cat("Recall for Malignant:", train_recall, "\n\n")
+
+cat("Test Set Performance:\n")
+cat("Accuracy:", test_accuracy, "\n")
+cat("Precision for Malignant:", test_precision, "\n")
+cat("Recall for Malignant:", test_recall, "\n")
+
+# The training set gave more accurate results, likely due to the fact that it had access to the prediction data and could simply memorize these examples, whereas the testing set hadn't seen the exact results before and would have generalized the training results in order to be able to try and match the test set.
+
+# Q3.2. Repeat the same task as Q3.1. with the top 5 PCs.
+
+ovarian.dataset.train.5 <- cbind(ovarian.dataset.train[, 1:5], diagnosis = ovarian.dataset.train$diagnosis)
+ovarian.dataset.test.5 <- cbind(ovarian.dataset.test[, 1:5], diagnosis = ovarian.dataset.test$diagnosis)
+
+logistic_model <- glm(diagnosis ~ ., data = ovarian.dataset.train.5, family = binomial)
+
+# Predict probabilities on training set
+train_probabilities <- predict(logistic_model, newdata = ovarian.dataset.train.5, type = "response")
+train_preds <- ifelse(train_probabilities >= 0.5, 1, 0)
+
+# Predict probabilities on test set
+test_probabilities <- predict(logistic_model, newdata = ovarian.dataset.test.5, type = "response")
+test_preds <- ifelse(test_probabilities >= 0.5, 1, 0)
+
+# Calculate accuracy, precision, and recall on training set
+train_accuracy <- sum(train_preds == ovarian.dataset.train.5$diagnosis) / nrow(ovarian.dataset.train.5)
+train_precision <- sum(train_preds[ovarian.dataset.train.5$diagnosis == 1] == 1) / sum(train_preds == 1)
+train_recall <- sum(train_preds[ovarian.dataset.train.5$diagnosis == 1] == 1) / sum(ovarian.dataset.train.5$diagnosis == 1)
+
+# Calculate accuracy, precision, and recall on test set
+test_accuracy <- sum(test_preds == ovarian.dataset.test.5$diagnosis) / nrow(ovarian.dataset.test.5)
+test_precision <- sum(test_preds[ovarian.dataset.test.5$diagnosis == 1] == 1) / sum(test_preds == 1)
+test_recall <- sum(test_preds[ovarian.dataset.test.5$diagnosis == 1] == 1) / sum(ovarian.dataset.test.5$diagnosis == 1)
+
+# Display results
+cat("Training Set Performance:\n")
+cat("Accuracy:", train_accuracy, "\n")
+cat("Precision for Malignant:", train_precision, "\n")
+cat("Recall for Malignant:", train_recall, "\n\n")
+
+cat("Test Set Performance:\n")
+cat("Accuracy:", test_accuracy, "\n")
+cat("Precision for Malignant:", test_precision, "\n")
+cat("Recall for Malignant:", test_recall, "\n")
+
+# Again, the training set gave more accurate results, likely due to the fact that it had access to the prediction data and could simply memorize these examples, whereas the testing set hadn't seen the exact results before and would have generalized the training results in order to be able to try and match the test set.
+
+# Q3.3. Compare the results between Q3.1. and Q3.2. Do the results get better or worse? Why?
+
+# The results get worse. This may be because of the decreased sample size so not all data is captured.
+
+# Q3.4. Compare the results of the clustering and classification methods. Which one gives you better result?
+
+# The classification method gave better results.
+
+# Q3.5. Install the library "ROCR" and load it. Then, run the following lines using your trained logistic regression model: This will generate an ROC curve of the performance of the classifier for a range of thresholds. Take a look at https://towardsdatascience.com/understanding-auc-roc-curve-68b2303cc9c5 for a summary of ROC curves. Given our ROC curve, what would you say it tells us about the overlap of the two classes? What can we say about the model's separability? How does an ROC curve tell us more about the model's performance than a single sensitivity/specificity measure?
+
+library(ROCR)
+
+# Assuming you have a logistic_model object
+predictions <- predict(logistic_model, ovarian.dataset.test, type="response")
+roc_pred <- prediction(predictions, ovarian.dataset.test$diagnosis)
+roc_perf <- performance(roc_pred, "tpr", "fpr")
+
+# Plot ROC Curve
+plot(roc_perf, col="blue", lwd=2, main="ROC Curve", sub="Receiver Operating Characteristic", col.main="blue", col.sub="blue", col.axis="blue")
+abline(a=0, b=1, lty=2, col="red")
+
+# The produced ROC curve suggests better model performance as it is closer to the top left corner. This suggests less overlap between the two classes since it strays away from the diagonal line, showing better separability. An ROC curve can provide more information than a single sensitivity/specificity measure since it is able to measure performance across a range of thresholds as opposed to one specific threshold.
+
+# Q3.6. Design another classifier (using a different classification method) and repeat Q3.1-3.
+
+library(randomForest)
+
+# Train a Random Forest classifier
+rf_model <- randomForest(diagnosis ~ ., data = ovarian.dataset.train)
+
+# Predict on the train set
+rf_predictions_train <- predict(rf_model, newdata = ovarian.dataset.train)
+# Predict on the test set
+rf_predictions_test <- predict(rf_model, newdata = ovarian.dataset.test)
+
+# Calculate accuracy, precision, and recall on training set
+accuracy_train <- sum(rf_predictions_train == ovarian.dataset.train$diagnosis) / nrow(ovarian.dataset.train)
+precision_M_train <- sum(rf_predictions_train[ovarian.dataset.train$diagnosis == 1] == 1) / sum(rf_predictions_train == 1)
+recall_M_train <- sum(rf_predictions_train[ovarian.dataset.train$diagnosis == 1] == 1) / sum(ovarian.dataset.train$diagnosis == 1)
+
+# Calculate accuracy, precision, and recall on training set
+accuracy_test <- sum(rf_predictions_test == ovarian.dataset.test$diagnosis) / nrow(ovarian.dataset.test)
+precision_M_test <- sum(rf_predictions_test[ovarian.dataset.test$diagnosis == 1] == 1) / sum(rf_predictions_test == 1)
+recall_M_test <- sum(rf_predictions_test[ovarian.dataset.test$diagnosis == 1] == 1) / sum(ovarian.dataset.test$diagnosis == 1)
+
+# Display results
+cat("Training Set Performance:\n")
+cat("Accuracy:", accuracy_train, "\n")
+cat("Precision for Malignant:", precision_M_train, "\n")
+cat("Recall for Malignant:", recall_M_train, "\n\n")
+
+cat("Test Set Performance:\n")
+cat("Accuracy:", accuracy_test, "\n")
+cat("Precision for Malignant:", precision_M_test, "\n")
+cat("Recall for Malignant:", recall_M_test, "\n")
+
+# The training set gave more accurate results, likely due to the fact that it had access to the prediction data and could simply memorize these examples, whereas the testing set hadn't seen the exact results before and would have generalized the training results in order to be able to try and match the test set.
+
+# Repeated with only the top 5 PCs
+library(randomForest)
+
+# Train a Random Forest classifier
+rf_model <- randomForest(diagnosis ~ ., data = ovarian.dataset.train.5)
+
+# Predict on the train set
+rf_predictions_train <- predict(rf_model, newdata = ovarian.dataset.train.5)
+# Predict on the test set
+rf_predictions_test <- predict(rf_model, newdata = ovarian.dataset.test.5)
+
+# Calculate accuracy, precision, and recall on training set
+accuracy_train <- sum(rf_predictions_train == ovarian.dataset.train.5$diagnosis) / nrow(ovarian.dataset.train.5)
+precision_M_train <- sum(rf_predictions_train[ovarian.dataset.train.5$diagnosis == 1] == 1) / sum(rf_predictions_train == 1)
+recall_M_train <- sum(rf_predictions_train[ovarian.dataset.train.5$diagnosis == 1] == 1) / sum(ovarian.dataset.train.5$diagnosis == 1)
+
+# Calculate accuracy, precision, and recall on training set
+accuracy_test <- sum(rf_predictions_test == ovarian.dataset.test.5$diagnosis) / nrow(ovarian.dataset.test.5)
+precision_M_test <- sum(rf_predictions_test[ovarian.dataset.test.5$diagnosis == 1] == 1) / sum(rf_predictions_test == 1)
+recall_M_train <- sum(rf_predictions_test[ovarian.dataset.test.5$diagnosis == 1] == 1) / sum(ovarian.dataset.test.5$diagnosis == 1)
+
+# Display results
+cat("Training Set Performance:\n")
+cat("Accuracy:", accuracy_train, "\n")
+cat("Precision for Malignant:", precision_M_train, "\n")
+cat("Recall for Malignant:", recall_M_train, "\n\n")
+
+cat("Test Set Performance:\n")
+cat("Accuracy:", accuracy_test, "\n")
+cat("Precision for Malignant:", precision_M_test, "\n")
+cat("Recall for Malignant:", recall_M_test, "\n")
+
+# Again, the training set gave more accurate results, likely due to the fact that it had access to the prediction data and could simply memorize these examples, whereas the testing set hadn't seen the exact results before and would have generalized the training results in order to be able to try and match the test set.
+
+# The results get worse. This may be because of the decreased sample size so not all data is captured.
