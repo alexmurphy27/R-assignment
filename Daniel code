@@ -1,0 +1,144 @@
+#importing the data
+ovarian_dataset <- read.delim("ovarian.data", sep=",", header = FALSE)
+features <- c("perimeter", "area", "smoothness", "symmetry", "concavity", paste("protein", seq(1, 25), sep=""))
+names(ovarian_dataset) <- c("cell_id", "diagnosis", features) # paste0(features,"_mean"), paste0(features,"_se"),
+paste0(features,"_worst")
+
+#running the first few PCR to see the SD and importance
+ovarian.pca <- prcomp(ovarian_dataset[,3:32], center = TRUE,scale. = TRUE)
+summary(ovarian.pca)
+
+#installing the graph tools
+install.packages("devtools")
+library(devtools)
+#install.packages("remotes")
+remotes::install_github("vqv/ggbiplot")
+library(ggbiplot)
+
+#plotting the first 2 relevant PC's (PC9 and PC10)
+ggbiplot(ovarian.pca, choices=c(9,10))
+ggbiplot(ovarian.pca, labels=row.names(ovarian_dataset))
+
+#categorizing
+ggbiplot(ovarian.pca, ellipse = TRUE, labels=rownames(ovarian_dataset), groups=ovarian_dataset$diagnosis)
+
+#normalizing the features (3-32) for clustering
+summary(ovarian_dataset)
+ovarian_data_norm <- as.data.frame(scale(ovarian_dataset[,3:32]))
+summary(ovarian_data_norm)
+
+dist_mat <- dist(ovarian_data_norm, method = 'euclidean')
+hclust_avg <-  hclust(dist_mat, method = 'average')
+
+cut_avg <-  cutree(hclust_avg, k=2)
+
+ovarian_dataset_cl <-  mutate(ovarian_dataset, cluster = cut_avg)
+
+#plotting the concavity over area 
+ggplot(ovarian_dataset_cl, aes(x=concavity,y=area, color= diagnosis)) + geom_point()
+
+##question 2 kmeans clustering
+install.packages("factoextra")
+library(factoextra)
+
+#create kmeans clusters 
+ovarian_k <- kmeans(ovarian_data_norm, 2, iter.max = 10, nstart=1)
+print(ovarian_k)
+
+#visualize clusters
+fviz_cluster(ovarian_k, ovarian_dataset[,3:32], ellipse.type = "norm")
+
+#making a function that will take both kclusted labels and the true labels and compare the accuarcy
+CompareKLabels <- function(kLabels, TrueLabels){
+  #test correspondence of labels 1 and 2 to M or B
+  OneAsM <- ifelse(kLabels == 1, "M", kLabels)
+  OneAsM <- ifelse(OneAsM == 2, "B", OneAsM)
+  
+  OneAsB <- ifelse(kLabels == "1", "B", kLabels)
+  OneAsB <- ifelse(OneAsB == 2, "M", OneAsB)
+  
+  SuccessM <- sum(OneAsM == TrueLabels)
+  SuccessB <- sum(OneAsB == TrueLabels)
+  
+  #compare which yields higher accuracy to the labels
+  if (SuccessM > SuccessB){
+    Accuracy <- SuccessM
+    FoundLabels <-  OneAsM
+  } else {
+    Accuracy <- SuccessB
+    FoundLabels <- OneAsB
+  }
+  
+  #return how many matched the real labels
+  percentAcc <-  Accuracy / length(kLabels)
+  
+  tp <- length(which(TrueLabels=="M"))
+  tn <- length(which(TrueLabels=="B"))
+  fp <- length(which(FoundLabels=="M"))
+  fn <- length(which(TrueLabels=="B"))
+  
+  percision <- (tp) / (tp + fp)
+  recall <- (tp) / (tp + fn)
+  
+  values <- data.frame(percentAcc, percision,recall)
+  return(values)
+}
+
+result1 <- CompareKLabels(ovarian_k$cluster,ovarian_dataset$diagnosis)
+acc1 <-  result1[1,1]
+i <- 1
+while (i <= 10){
+  tempKData <- kmeans(ovarian_data_norm, 2, iter.max = 10, nstart=i)
+  print(CompareKLabels(tempKData$cluster,ovarian_dataset$diagnosis))
+  i = i+1
+}
+
+
+
+
+#PCA on the data
+topPC <- ovarian.pca$x[,1:5]
+
+topPc_K <- kmeans(topPC,2)
+PcaKvals <-CompareKLabels(topPc_K$cluster, ovarian_dataset$diagnosis)
+#I got the same values lol
+
+
+#Question 3 
+ovarian_dataset.train <- ovarian_dataset[sample(nrow(ovarian_dataset))[1:(nrow(ovarian_dataset)/2)],]
+ovarian_dataset.test <- ovarian_dataset[sample(nrow(ovarian_dataset))[(nrow(ovarian_dataset)/2):(nrow(ovarian_dataset))],]
+ovarian_dataset.train$diagnosis <- as.factor(ovarian_dataset.train$diagnosis)
+ovarian_dataset.test$diagnosis <- as.factor(ovarian_dataset.test$diagnosis)
+
+fitDiag <-  glm(diagnosis~ +. -cell_id, data = ovarian_dataset.train, family = binomial)
+summary(fitDiag)
+
+prob <-  predict(fitDiag, ovarian_dataset.test, type = "response")
+prob[1:5]
+#does not converge
+
+#come back to this
+PC_prob <- predict(fitDiag, as.data.frame(topPC), type = "response")
+
+install.packages("ROCR")
+library(ROCR)
+
+pred.prob <- predict(fit, ovarian_dataset, type="response")
+predict <- prediction(pred.prob, ovarian_dataset$diagnosis, label.ordering=c("B","M"))
+perform <- performance(predict,"tpr","fpr")
+plot(perform,colorize=TRUE)
+
+#what does nay of this means??????
+#really high tp rate, vary levels of false positive rate. the model tend to flag too many cells as positive
+#not very precise 
+
+#classifying for area i guess 
+fitArea <-  glm(area~ +. -cell_id, data = ovarian_dataset.train, family = binomial)
+summary(fitArea)
+
+prob <-  predict(fitDiag, ovarian_dataset.test, type = "response")
+prob[1:5]
+#does not converge
+
+#come back to this
+PC_prob <- predict(fitDiag, as.data.frame(topPC), type = "response")
