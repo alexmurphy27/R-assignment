@@ -4,6 +4,9 @@ features <- c("perimeter", "area", "smoothness", "symmetry", "concavity", paste(
 names(ovarian_dataset) <- c("cell_id", "diagnosis", features) # paste0(features,"_mean"), paste0(features,"_se"),
 paste0(features,"_worst")
 
+
+#Question 1
+
 #running the first few PCR to see the SD and importance
 ovarian.pca <- prcomp(ovarian_dataset[,3:32], center = TRUE,scale. = TRUE)
 summary(ovarian.pca)
@@ -37,7 +40,28 @@ ovarian_dataset_cl <-  mutate(ovarian_dataset, cluster = cut_avg)
 #plotting the concavity over area 
 ggplot(ovarian_dataset_cl, aes(x=concavity,y=area, color= diagnosis)) + geom_point()
 
+
+#Q1.1
+#variance = SD^2 = 1.0844^2 = 1.175923
+
+#Q1.2
+#capture 90% = cumulative proportion(CumProp) = 0.9
+#PC9: { SD=0.67762, PropVar = 0.01531, CumProp = 0.90101}
+
+#Q1.3
+#yes see graph
+
+#Q1.4
+#yes
+
+#Q1.5
+#comparing the graphs we see that area provides more spread out datapoints
+
+
+
 ##question 2 kmeans clustering
+
+#code
 install.packages("factoextra")
 library(factoextra)
 
@@ -93,22 +117,35 @@ while (i <= 10){
   i = i+1
 }
 
+#Q2.1
+#Accuracy = 0.9216
 
+#Q2.2
+#the accuracy was the same for all the trials. This means the program has reached either a local or global maxima/minima.
 
+#Q2.3
 
 #PCA on the data
 topPC <- ovarian.pca$x[,1:5]
 
 topPc_K <- kmeans(topPC,2)
 PcaKvals <-CompareKLabels(topPc_K$cluster, ovarian_dataset$diagnosis)
+
+#Q2.4
 #I got the same values lol
 
 
+
 #Question 3 
+
+
+
 ovarian_dataset.train <- ovarian_dataset[sample(nrow(ovarian_dataset))[1:(nrow(ovarian_dataset)/2)],]
 ovarian_dataset.test <- ovarian_dataset[sample(nrow(ovarian_dataset))[(nrow(ovarian_dataset)/2):(nrow(ovarian_dataset))],]
 ovarian_dataset.train$diagnosis <- as.factor(ovarian_dataset.train$diagnosis)
 ovarian_dataset.test$diagnosis <- as.factor(ovarian_dataset.test$diagnosis)
+
+#Q3.1
 
 fitDiag <-  glm(diagnosis~ +. -cell_id, data = ovarian_dataset.train, family = binomial)
 summary(fitDiag)
@@ -117,8 +154,19 @@ prob <-  predict(fitDiag, ovarian_dataset.test, type = "response")
 prob[1:5]
 #does not converge
 
+#values spat out
+         558          361          378          144 
+2.220446e-16 2.220446e-16 2.220446e-16 2.220446e-16 
+         472 
+2.220446e-16 
+
+#Q2.2
+
 #come back to this
 PC_prob <- predict(fitDiag, as.data.frame(topPC), type = "response")
+
+
+#Q3.4
 
 install.packages("ROCR")
 library(ROCR)
@@ -131,6 +179,9 @@ plot(perform,colorize=TRUE)
 #what does nay of this means??????
 #really high tp rate, vary levels of false positive rate. the model tend to flag too many cells as positive
 #not very precise 
+
+
+#Q3.5
 
 #classifying for area i guess 
 fitArea <-  glm(area~ +. -cell_id, data = ovarian_dataset.train, family = binomial)
